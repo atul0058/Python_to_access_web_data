@@ -32,6 +32,24 @@ client = ModbusClient(host = '192.168.178.10', port  = 502)
 #==============================Threading==============================================================
 import threading 
 
+
+Tamb = 10
+
+Re = 5000
+Pr = 0.71
+Nu = 0.3 + ((0.62*(Re**0.5)*(Pr**(1/3)))/(1+(0.4*Pr**(2/3)))**0.25)+(1+(Re/282000)**5/8)**(4/5)
+k = 0.17       #W.m^-1.k^-1
+d = 0.04       #m
+h = Nu*k/d     #W.m^2.k^-1
+Tamb = 10
+#Target Temp : 17      #k
+a_conv = 5.38*10**(-3) #m^2
+v =  2.87*10**(-5)     #m^3
+d = 1070               #kg.m^-3
+c = 1432.512           #J.k^-1
+b=h*a_conv/(d*v*c) #seconds
+
+
 class App(threading.Thread):
 
     def __init__(self,tk_root):
@@ -45,12 +63,18 @@ class App(threading.Thread):
 my_window = Tk()
 
 #================================================================
-label  = [[0 for i in range(12)] for i in range(12)]
+label  = [[0 for i in range(13)] for i in range(13)]
 for i in range(12):
     for j in range(12):
         label[i][j] = Label( my_window, width = '10', height = '3', bg = 'white')
 
 #==================================DATABASE INFO and cooling curve===============================
+
+label[1][5]=Entry(my_window)
+
+
+Target_Temp=17
+
 
 label[0][4]=Label(my_window,width = '20', height = '3',text="Initial Temp (deg C)",bd=10,bg = 'white',anchor='w')
 label[1][4]=Label(my_window,width = '20', height = '3',text="Target Temp (deg C)",bd=10,bg = 'white',anchor='w')
@@ -81,10 +105,6 @@ label[3][5].grid(row=3,column=5)
 label[4][5].grid(row=4,column=5)
 
 
-
-
-# label_21=Label(my_window,width = '10', height = '3',text="Cooling curve", bd=10)
-# label_21.grid(row=6,column=6,rowspan=6,columnspan=2)
 
 #======================================Cooling elements info and trigger AM2302 and SHT31-D==========================
 def Ambient_temp():
@@ -131,12 +151,6 @@ label[11][4].grid(row=11,column=4)
 label[5][5]=Entry(my_window)
 
 
-# label[6][5]=Label(my_window,width = '10', height = '3',text="upd", bd=10,bg = 'white',anchor='w')
-# label[7][5]=Label(my_window,width = '10', height = '3',text="upd", bd=10,bg = 'white',anchor='w')
-# label[8][5]=Label(my_window,width = '10', height = '3',text="upd", bd=10,bg = 'white',anchor='w')
-# label[9][5]=Label(my_window,width = '10', height = '3',text="upd", bd=10,bg = 'white',anchor='w')
-# label[10][5]=Label(my_window,width = '10', height = '3',text="upd", bd=10,bg = 'white',anchor='w')
-# label[11][5]=Label(my_window,width = '10', height = '3',text="upd", bd=10,bg = 'white',anchor='w')
 label[5][5].grid(row=5,column=5)
 label[6][5].grid(row=6,column=5)
 label[7][5].grid(row=7,column=5)
@@ -150,24 +164,9 @@ label[11][5].grid(row=11,column=5)
 
 db = MySQLdb.connect(host="localhost", user="raspi", passwd="raspberry", db="test1")
 
-def cooling_time(Ti):
-    Re = 5000
-    Pr = 0.71
-    Nu = 0.3 + ((0.62*(Re**0.5)*(Pr**(1/3)))/(1+(0.4*Pr**(2/3)))**0.25)+(1+(Re/282000)**5/8)**(4/5)
-    k = 0.17       #W.m^-1.k^-1
-    d = 0.04       #m
-    h = Nu*k/d     #W.m^2.k^-1
-    Tamb = 10      #k
-    #Target Temp: 17
-    a_conv = 5.38*10**(-3) #m^2
-    v =  2.87*10**(-5)     #m^3
-    d = 1070               #kg.m^-3
-    c = 1432.512           #J.k^-1
-    b=h*a_conv/(d*v*c)
-    
-    time=(1/b)*math.log((Ti-10)/7)+2400 #in seconds
-    time=time/60
-    return time
+def cooling_time(Ti): 
+    time=(1/b)*math.log((Ti-Tamb)/(Target_Temp-Tamb))+2400 #in seconds
+    return time 
 
 #will remove all the workpieces from the rack
 def clearstore():#add modbus
@@ -216,33 +215,21 @@ def button_click(i,j):
     
     label[5][5].grid(row=5,column=5)
 
-    z=int(cooling_time(Ti))
-    Re = 5000
-    Pr = 0.71
-    Nu = 0.3 + ((0.62*(Re**0.5)*(Pr**(1/3)))/(1+(0.4*Pr**(2/3)))**0.25)+(1+(Re/282000)**5/8)**(4/5)
-    k = 0.17       #W.m^-1.k^-1
-    d = 0.04       #m
-    h = Nu*k/d     #W.m^2.k^-1
-    Tamb = 10
-    #Target Temp : 17      #k
-    a_conv = 5.38*10**(-3) #m^2
-    v =  2.87*10**(-5)     #m^3
-    d = 1070               #kg.m^-3
-    c = 1432.512           #J.k^-1
-    b=h*a_conv/(d*v*c)
-    x = [i for i in range(z)]  
-    y = [7*math.exp(b*(z-i))+10 for i in x] 
+    z=cooling_time(Ti)
+    ls=[0,0.2*z,0.4*z,0.6*z,0.8*z,z]
+    x = [p for p in ls]  
+    y = [(Ti-Tamb)*math.exp(-b*p)+Tamb for p in x] 
     
     plt.title('Cooling curve')
     plt.xlabel('Time (sec)')
     plt.ylabel('Temp (deg C)')
     fig=Figure(figsize=(5,4),dpi=100)
     ax=fig.add_subplot(111).plot(x,y)
-    fig.text(0.5, 0.04, 'Time (hours)', ha='center', va='center')
-    fig.text(0.06, 0.5, 'Temp (deg C)', ha='center', va='center', rotation='vertical')
+    fig.text(0.5, 0.03, 'Time (seconds)', ha='center', va='center')
+    fig.text(0.04, 0.5, 'Temp (deg C)', ha='center', va='center', rotation='vertical')
     canvas=FigureCanvasTkAgg(fig,master=my_window)
     canvas.draw()
-    canvas.get_tk_widget().grid(row=3,column=6,rowspan=6)
+    canvas.get_tk_widget().grid(row=6,column=6,rowspan=6)
 
 button=[[0 for i in range(4)] for i in range(12)]
 for i in range(12):
@@ -275,12 +262,6 @@ for i in other_rows:
     for j in range(4):
         label[i][j].grid(row=i,column=j)
 
-#workpiece images
-# red_wkp=PhotoImage(file="Dose_schwarz.png")
-# silver_wkp=PhotoImage(file="Dose_silber.png")
-# black_wkp=PhotoImage(file="Dose_schwarz,png")
-# trans_wkp=PhotoImage(file="Dose_transparent.png")
-
 #putting racks
 img1=PhotoImage(file="rack.png")
 label_1=Label(my_window,image=img1)
@@ -297,8 +278,10 @@ label_4.grid(row=6,column=0,columnspan=4, rowspan=2)
 label_5.grid(row=8,column=0,columnspan=4, rowspan=2)
 label_6.grid(row=10,column=0,columnspan=4, rowspan=2)
 
+
+
+
 def UserInput_coolingTime():
-    #make a new cooling curve
     #send this current to the script
     new_time=label[2][5]['text']
     new_time=datetime.datetime.strptime(new_time, '%Y-%m-%d %H:%M:%S')
@@ -318,36 +301,21 @@ def UserInput_coolingTime():
 
     temp=label[0][5]["text"]
 
-    z=int(cooling_time(int(temp)))
-    Re = 5000
-    Pr = 0.71
-    Nu = 0.3 + ((0.62*(Re**0.5)*(Pr**(1/3)))/(1+(0.4*Pr**(2/3)))**0.25)+(1+(Re/282000)**5/8)**(4/5)
-    k = 0.17       #W.m^-1.k^-1
-    d = 0.04       #m
-    h = Nu*k/d     #W.m^2.k^-1
-    Tamb = 10
-    #Target Temp : 17      #k
-    a_conv = 5.38*10**(-3) #m^2
-    v =  2.87*10**(-5)     #m^3
-    d = 1070               #kg.m^-3
-    c = 1432.512           #J.k^-1
-    b=h*a_conv/(d*v*c)
-    x = [i for i in range(z)]  
-    y = [7*math.exp(b*(z-i))+10 for i in x] 
-    
+    z=int(label[4][5].get())
+    ls=[0,0.2*z,0.4*z,0.6*z,0.8*z,z]
+    x = [i for i in ls] 
+    y = [(temp-Tamb)*math.exp(-b*(i))+Tamb for i in x] 
     plt.title('Cooling curve')
     plt.xlabel('Time (sec)')
     plt.ylabel('Temp (deg C)')
     fig=Figure(figsize=(5,4),dpi=100)
     ax=fig.add_subplot(111).plot(x,y)
-    fig.text(0.5, 0.04, 'Time (sec)', ha='center', va='center')
-    fig.text(0.06, 0.5, 'Temp (deg C)', ha='center', va='center', rotation='vertical')
+    fig.text(0.5, 0.03, 'Time (sec)', ha='center', va='center')
+    fig.text(0.03, 0.5, 'Temp (deg C)', ha='center', va='center', rotation='vertical')
     canvas=FigureCanvasTkAgg(fig,master=my_window)
     canvas.draw()
-    canvas.get_tk_widget().grid(row=7,column=6,rowspan=6)
+    canvas.get_tk_widget().grid(row=6,column=6,rowspan=6)
     
-
-
 def UserInput_current():
     newcurrent=label[5][5].cget("text")
     newcurrent=float(newcurrent)
@@ -364,18 +332,94 @@ user_input_button.grid(row=2,column=6)
 
 
 
+
+
+def refresh_button():
+    query3=("select Current, Voltage, Hot_Side_Temp, Cold_Side_Temp from peltier_power order by Id desc limit 1")
+    query4=("select Hot_Side_Temp from peltier_power")
+    query5=("select Cold_Side_Temp from peltier_power")
+    queries=[query3,query4,query5]
+    c = db.cursor()
+
+    for x in queries:
+        if x==query3:
+            try:
+                db.begin()
+                c.execute(query3)
+                result3=c.fetchall()
+                # print result3
+                current= result3[0][0]
+                voltage = result3[0][1]
+                Th = result3[0][2]
+                Tc = result3[0][3]
+                label[6][5]=Label(my_window,width = '20', height = '3',text=current,bd=10,bg = 'white',anchor='w')
+                label[7][5]=Label(my_window,width = '20', height = '3',text=voltage,bd=10,bg = 'white',anchor='w')
+                label[8][5]=Label(my_window,width = '20', height = '3',text=Th,bd=10,bg = 'white',anchor='w')
+                label[9][5]=Label(my_window,width = '20', height = '3',text=Tc,bd=10,bg = 'white',anchor='w')
+                label[6][5].grid(row=6,column=5)
+                label[7][5].grid(row=7,column=5)
+                label[8][5].grid(row=8,column=5)
+                label[9][5].grid(row=9,column=5)
+                print result3
+                db.commit()
+            except Exception:
+                pass
+
+        elif x==query4:
+            try:
+                db.begin()
+                c.execute(query4)
+                result4=c.fetchall()
+                ls=[]
+                for i in result4:
+                    ls.append(round(float(i[0]),2))
+                y=len(ls)
+                x_axis=[i for i in range(y)]
+                y_axis=[i for i in ls]
+                fig=Figure(figsize=(5,4),dpi=100)
+                ax=fig.add_subplot(111).plot(x_axis,y_axis)
+                fig.text(0.5, 0.04, ' ', ha='center', va='center')
+                fig.text(0.03, 0.5, 'Avg Hot Side Temp (deg C)', ha='center', va='center', rotation='vertical')
+                canvas=FigureCanvasTkAgg(fig,master=my_window)
+                canvas.draw()
+                canvas.get_tk_widget().grid(row=0,column=15,rowspan=6,columnspan=8)
+                db.commit()
+
+            except Exception:
+                pass
+
+        elif x==query5:
+            try:  
+                db.begin()
+                c.execute(query5)
+                result5=c.fetchall()
+                ls=[]
+                for i in result5:
+                    ls.append(round(float(i[0]),2))
+                y=len(ls)
+                x_axis=[i for i in range(y)]
+                y_axis=[i for i in ls]
+                fig=Figure(figsize=(5,4),dpi=100)
+                ax=fig.add_subplot(111).plot(x_axis,y_axis)
+                fig.text(0.5, 0.04, ' ', ha='center', va='center')
+                fig.text(0.03, 0.5, 'Avg Cold Side Temp (deg C)', ha='center', va='center', rotation='vertical')
+                canvas=FigureCanvasTkAgg(fig,master=my_window)
+                canvas.draw()
+                canvas.get_tk_widget().grid(row=6,column=15,rowspan=6,columnspan=8)
+                db.commit()
+            except Exception:
+                pass
+
+refresh_button=Button( my_window,text='Refresh', bg='white',command=refresh_button)
+refresh_button.grid(row=3,column=6)
+
 #input is location and color, will put the wkp in the locaiton
 def show_image():
     #try except statement here, on clicking the clear store button, the programme shows an error.
     query1=("select Location,Colour from LastAdded order by Id desc limit 1")
     query2=("select Location from LastRemoved order by Id desc limit 1")
-    query3=("select Current, Voltage, Hot_Side_Temp, Cold_Side_Temp from peltier_power order by Id desc limit 1")
-    query4=("select Hot_Side_Temp from peltier_power")
-    query5=("select Cold_Side_Temp from peltier_power")
-
-    queries=[query3,query2,query1,query4,query5]
+    queries=[query2,query1]
     c = db.cursor()
-
     for x in queries:
         if x==query2:
             try:
@@ -392,31 +436,6 @@ def show_image():
                 #print result2
             except Exception:
                 pass
-
-        # elif x==query3:
-        #     try:
-        #         db.begin()
-        #         c.execute(query3)
-        #         result3=c.fetchall()
-        #         # print result3
-        #         current= result3[0][0]
-        #         voltage = result3[0][1]
-        #         Th = result3[0][2]
-        #         Tc = result3[0][3]
-        #         label[6][5]=Label(my_window,width = '20', height = '3',text=current,bd=10,bg = 'white',anchor='w')
-        #         label[7][5]=Label(my_window,width = '20', height = '3',text=voltage,bd=10,bg = 'white',anchor='w')
-        #         label[8][5]=Label(my_window,width = '20', height = '3',text=Th,bd=10,bg = 'white',anchor='w')
-        #         label[9][5]=Label(my_window,width = '20', height = '3',text=Tc,bd=10,bg = 'white',anchor='w')
-        #         label[6][5].grid(row=6,column=5)
-        #         label[7][5].grid(row=7,column=5)
-        #         label[8][5].grid(row=8,column=5)
-        #         label[9][5].grid(row=9,column=5)
-        #         print result3
-        #         db.commit()
-        #         time.sleep(5)
-        #     except Exception:
-        #         pass
-
         elif x==query1:
             try:
                 db.begin()
@@ -452,52 +471,6 @@ def show_image():
                 db.commit()
             except Exception:
                 pass
-
-        # elif x==query4:
-        #     try:
-        #         db.begin()
-        #         c.execute(query4)
-        #         result4=c.fetchall()
-        #         ls=[]
-        #         for i in result4:
-        #             ls.append(round(float(i[0]),2))
-        #         y=len(ls)
-        #         x_axis=[i for i in range(y)]
-        #         y_axis=[i for i in ls]
-        #         fig=Figure(figsize=(5,4),dpi=100)
-        #         ax=fig.add_subplot(111).plot(x_axis,y_axis)
-        #         fig.text(0.5, 0.04, ' ', ha='center', va='center')
-        #         fig.text(0.06, 0.5, 'Avg Hot Side Temp (deg C)', ha='center', va='center', rotation='vertical')
-        #         canvas=FigureCanvasTkAgg(fig,master=my_window)
-        #         canvas.draw()
-        #         canvas.get_tk_widget().grid(row=0,column=15,rowspan=8,columnspan=5)
-        #         db.commit()
-        #         time.sleep(7)
-        #     except Exception:
-        #         pass
-
-        # elif x==query5:
-        #     try:  
-        #         db.begin()
-        #         c.execute(query5)
-        #         result5=c.fetchall()
-        #         ls=[]
-        #         for i in result5:
-        #             ls.append(round(float(i[0]),2))
-        #         y=len(ls)
-        #         x_axis=[i for i in range(y)]
-        #         y_axis=[i for i in ls]
-        #         fig=Figure(figsize=(5,4),dpi=100)
-        #         ax=fig.add_subplot(111).plot(x_axis,y_axis)
-        #         fig.text(0.5, 0, ' ', ha='center', va='center')
-        #         fig.text(0, 0.5, 'Avg Cold Side Temp (deg C)', ha='center', va='center', rotation='vertical')
-        #         canvas=FigureCanvasTkAgg(fig,master=my_window)
-        #         canvas.draw()
-        #         canvas.get_tk_widget().grid(row=6,column=15,rowspan=8,columnspan=5)
-        #         db.commit()
-        #         time.sleep(10)
-        #     except Exception:
-        #         pass
     my_window.after(1000,show_image)
 
 APP = App(my_window)
